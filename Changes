@@ -1,0 +1,6 @@
+Revision history for Perl extension DBI::SpeedySimple.
+
+0.01  Sat Jan 30 22:23:44 2010
+	- original version; created by h2xs 1.23 with options
+		-AX DBI::SpeedySimple
+
