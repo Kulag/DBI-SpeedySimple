@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 require DBI;
-require Encode;
+use Encode;
 require Exporter;
 
 our @ISA = qw(Exporter);
