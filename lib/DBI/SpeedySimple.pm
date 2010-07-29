@@ -138,10 +138,15 @@ sub remove {
 	my($self, $table, $whereinfo) = @_;
 	if($self->{caching} and defined $self->{cache}->{join('-', ($table, keys %{$whereinfo}))}) {
 		my $ptr = $self->{cache}->{join('-', ($table, keys %{$whereinfo}))};
-		for my $index (keys %{$whereinfo}) {
-			$ptr = $ptr->{$whereinfo->{$index}};
+		my @keys = keys %{$whereinfo};
+		while(my $index = shift @keys) {
+			if(!scalar(@keys)) {
+				delete $ptr->{$whereinfo->{$index}};
+			}
+			else {
+				$ptr = $ptr->{$whereinfo->{$index}};
+			}
 		}
-		#delete $ptr if defined $ptr;
 	}
 	
 	my $sth = $self->{dbh}->prepare_cached("DELETE FROM $table" . $self->_whereinfo($whereinfo));
