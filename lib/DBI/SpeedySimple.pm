@@ -14,48 +14,33 @@ sub new {
 }
 
 sub cache {
-	my($self, $to_cache) = @_;
-	$self->{cache} = bless {};
-	for(@{$to_cache}) {
-		my $ckey = join '-', ($_->{table}, @{$_->{indices}});
-		$self->{cache}->{$ckey} = $self->{dbh}->selectall_hashref('SELECT * FROM ' . $_->{table}, $_->{indices});
-		if(defined $self->{cache}->{$ckey}) {
-			_cache_mark_utf8($self->{cache}->{$ckey}, scalar(@{$_->{indices}}));
-		}
-	}
-	return;
-}
+	my($self, $to_cache_items) = @_;
 
-sub _cache_mark_utf8 {
-	my($cache, $index_depth) = @_;
-	if($index_depth == 0) {
-		for(keys %$cache) {
-			Encode::_utf8_on($cache->{$_});
+	for my $to_cache (@$to_cache_items) {
+		my @indexes = sort @{$to_cache->{indices}};
+		my $ckey = join '-', $to_cache->{table}, @indexes;
+		my $cache = $self->{cache}->{$ckey} = {};
+		my $sth = $self->{dbh}->prepare('SELECT * FROM ' . $to_cache->{table});
+		$sth->execute;
+
+		while (my $row = $sth->fetchrow_hashref) {
+			Encode::_utf8_on($row->{$_}) for keys %$row;
+
+			my $ckey2 = join '-', map { $row->{$_} } @indexes;
+			$cache->{$ckey2} = $row;
 		}
 	}
-	elsif($index_depth > 0) {
-		my $new_depth = $index_depth - 1;
-		for(keys %$cache) {
-			_cache_mark_utf8($cache->{$_}, $new_depth);
-		}
-	}
-	else {
-		die 'bad index depth in cache';
-	}
-	return;
 }
 
 sub fetch {
 	my($self, $table, $what, $whereinfo, $limit) = @_;
-	my $ckey = join('-', ($table, keys %{$whereinfo}));
-	if(defined $self->{cache}->{$ckey}) {
-		my $ptr = $self->{cache}->{$ckey};
-		for(values %{$whereinfo}) {
-			$ptr = $ptr->{$_};
-		}
-		return $ptr if defined $ptr;
+
+	# From cache
+	my @cache_keys = sort keys %$whereinfo;
+	if (my $a = $self->{cache}->{ join '-', $table, @cache_keys }->{ join '-', @$whereinfo{@cache_keys} }) {
+		return $a;
 	}
-	
+
 	my $sth = $self->{dbh}->prepare_cached("SELECT " . join(",", @$what) . " FROM `$table`" . $self->_whereinfo($whereinfo) . ($limit ? "LIMIT $limit" : "")) or die $DBI::errstr;
 	my @vals = values(%{$whereinfo});
 	for(@vals) {
@@ -113,19 +98,16 @@ sub set {
 
 sub remove {
 	my($self, $table, $whereinfo) = @_;
-	if($self->{caching} and defined $self->{cache}->{join('-', ($table, keys %{$whereinfo}))}) {
-		my $ptr = $self->{cache}->{join('-', ($table, keys %{$whereinfo}))};
-		my @keys = keys %{$whereinfo};
-		while(my $index = shift @keys) {
-			if(!scalar(@keys)) {
-				delete $ptr->{$whereinfo->{$index}};
-			}
-			else {
-				$ptr = $ptr->{$whereinfo->{$index}};
-			}
-		}
+
+	# From cache
+	my @cache_keys = sort keys %$whereinfo;
+	my $ckey = join '-', $table, @cache_keys;
+	if (exists $self->{cache}->{$ckey}) {
+		my $cache = $self->{cache}->{$ckey};
+		$ckey = join '-', @$whereinfo{@cache_keys};
+		delete $cache->{$ckey} if exists $cache->{$ckey};
 	}
-	
+
 	my $sth = $self->{dbh}->prepare_cached("DELETE FROM $table" . $self->_whereinfo($whereinfo));
 	my @vals = values(%{$whereinfo});
 	for(@vals) {
