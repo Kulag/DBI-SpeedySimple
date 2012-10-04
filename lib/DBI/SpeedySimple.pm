@@ -1,10 +1,8 @@
 package DBI::SpeedySimple;
 
 use 5.010001;
-use strict;
-use warnings;
-
-require DBI;
+use common::sense;
+use DBI;
 use Encode;
 
 our $VERSION = '0.03';
