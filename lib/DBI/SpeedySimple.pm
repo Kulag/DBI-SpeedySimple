@@ -9,7 +9,15 @@ our $VERSION = '0.03';
 
 sub new {
 	my $self = bless {}, shift;
-	$self->{dbh} = DBI->connect(shift) or die "Cannot connect: $DBI::errstr";
+	my $dsn = shift;
+
+	$self->{dbh} = DBI->connect($dsn) or die "Cannot connect: $DBI::errstr";
+
+	if ($dsn =~ /^dbi:SQLite/) {
+		$self->{dbh}{sqlite_unicode} = 1;
+		$self->{unicode} = 1;
+	}
+
 	return $self;
 }
 
@@ -24,7 +32,9 @@ sub cache {
 		$sth->execute;
 
 		while (my $row = $sth->fetchrow_hashref) {
-			Encode::_utf8_on($row->{$_}) for keys %$row;
+			unless ($self->{unicode}) {
+				Encode::_utf8_on($row->{$_}) for keys %$row;
+			}
 
 			my $ckey2 = join '-', map { $row->{$_} } @indexes;
 			$cache->{$ckey2} = $row;
@@ -49,9 +59,11 @@ sub fetch {
 	$sth->execute(@vals);
 	my $r = int($limit) == 1 ? $sth->fetchrow_hashref() : $sth->fetchall_hashref();
 	$sth->finish();
-	if(defined $r) {
+
+	if (defined $r && !$self->{unicode}) {
 		Encode::_utf8_on($r->{$_}) for keys %$r;
 	}
+
 	return $r;
 }
 
